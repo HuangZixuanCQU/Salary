@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>薪酬拆分计算工具</title>
+  <style>
+    :root {
+      --bg: #f4f6fa;
+      --card: #ffffff;
+      --line: #e3e8f0;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --accent-dark: #1d4ed8;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+      line-height: 1.6;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 64px; }
+    header { text-align: center; margin-bottom: 28px; }
+    header h1 { margin: 0 0 6px; font-size: 26px; }
+    header p { margin: 0; color: var(--muted); font-size: 14px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 22px 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+    }
+    .card h2 { margin: 0 0 14px; font-size: 17px; }
+    .drop {
+      border: 2px dashed #b9c6dc;
+      border-radius: 10px;
+      padding: 26px 16px;
+      text-align: center;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      background: #fafbfd;
+    }
+    .drop:hover, .drop.over { border-color: var(--accent); background: #f0f5ff; }
+    .drop .name { color: var(--text); font-weight: 600; word-break: break-all; }
+    .fields { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 18px; }
+    .field { flex: 1 1 220px; }
+    .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .field input, .field select {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      background: #fff;
+      color: var(--text);
+    }
+    .field input:focus, .field select:focus { outline: 2px solid rgba(37, 99, 235, 0.35); border-color: var(--accent); }
+    .actions { margin-top: 18px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    button {
+      font-family: inherit;
+      font-size: 14px;
+      padding: 10px 22px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+    .primary { background: var(--accent); color: #fff; }
+    .primary:hover { background: var(--accent-dark); }
+    .primary:disabled { background: #9db8f0; cursor: not-allowed; }
+    .secondary { background: #fff; color: var(--accent); border-color: var(--accent); }
+    .secondary:hover { background: #f0f5ff; }
+    .msg { margin-top: 14px; font-size: 14px; }
+    .msg.error { color: var(--bad); }
+    .msg.ok { color: var(--ok); }
+    table.summary {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin-top: 6px;
+    }
+    table.summary th, table.summary td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: left;
+    }
+    table.summary th { background: #f7f9fc; font-weight: 600; }
+    .badge { padding: 2px 10px; border-radius: 999px; font-size: 12px; }
+    .badge.ok { background: #e8f7ee; color: var(--ok); }
+    .badge.no { background: #fdecec; color: var(--bad); }
+    .sheet-block { margin-top: 18px; }
+    .sheet-block h3 { margin: 0 0 8px; font-size: 15px; }
+    .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+    table.preview { border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+    table.preview th, table.preview td {
+      border: 1px solid var(--line);
+      padding: 6px 10px;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    table.preview th { background: #f7f9fc; font-weight: 600; }
+    table.preview td.salary { background: #eef4ff; }
+    table.preview td.bad { color: var(--bad); }
+    .hidden { display: none; }
+    .hint { font-size: 13px; color: var(--muted); margin-top: 10px; }
+    .rules { font-size: 13px; color: var(--muted); background: #fafbfd; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-top: 14px; }
+    .rules b { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>薪酬拆分计算工具</h1>
+      <p>上传表格，按列名和比例计算 Salary 1 / Salary 2，生成新表格</p>
+    </header>
+
+    <section class="card">
+      <h2>1. 上传与设置</h2>
+      <div class="drop" id="drop">
+        <div id="dropText">点击选择或拖拽 .xlsx / .xls / .csv 文件到此处</div>
+      </div>
+      <input type="file" id="file" accept=".xlsx,.xls,.csv" class="hidden">
+
+      <div class="fields">
+        <div class="field">
+          <label for="colName">需要处理的列名</label>
+          <select id="colName">
+            <option value="业务" selected>业务</option>
+            <option value="利润额">利润额</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sheetNames">需要处理的子表（可多个，逗号分隔；留空=全部）</label>
+          <input type="text" id="sheetNames" placeholder="例如：火车站揽装,紫云府揽装">
+        </div>
+        <div class="field">
+          <label for="ratio">比例（0 ~ 1）</label>
+          <input type="number" id="ratio" step="0.01" min="0" max="1" value="0.7">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="runBtn" disabled>开始处理</button>
+      </div>
+
+      <div class="rules">
+        <b>计算规则：</b><br>
+        列名只能选择“业务”或“利润额”。<br>
+        <b>“业务”列：</b><br>
+        ① 恰有 1 个数字且文本含“新装”：Salary 1 = 数字 × 比例，Salary 2 = 数字 × (1 − 比例)；<br>
+        ② 恰有 2 个数字且文本含“升级”：Salary 1 =（大数 − 小数）× 比例，Salary 2 =（大数 − 小数）× (1 − 比例)；<br>
+        ③ 其他情况（≥3 个数字、2 个数字但无“升级”、1 个数字但无“新装”、无数字）：两列均输出“不符合格式，未计算”。<br>
+        <b>“利润额”列：</b><br>
+        每个单元格必须是单个带正负号的数字（如 +120、-35.5）：Salary 1 = 该数 × 比例，Salary 2 = 该数 × (1 − 比例)；<br>
+        否则两列均输出“格式不符，未计算”。<br>
+        Salary 1、Salary 2 的计算结果统一保留两位小数。<br>
+        <span class="hint">处理仅应用于“需要处理的子表”中填写的子表（多个用逗号分隔）；留空则处理所有子表。每张找到该列的子表，都会在表格最右侧第一个空列起追加 Salary 1、Salary 2 两列。</span>
+      </div>
+    </section>
+
+    <section class="card hidden" id="resultCard">
+      <h2>2. 处理结果</h2>
+      <div class="msg" id="msg"></div>
+      <table class="summary" id="summaryTable"></table>
+      <div id="previews"></div>
+      <div class="actions">
+        <button class="primary" id="dlBtn">下载新表格</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="xlsx.full.min.js"></script>
+  <script src="salary-core.js"></script>
+  <script>
+    (function () {
+      "use strict";
+      const drop = document.getElementById("drop");
+      const dropText = document.getElementById("dropText");
+      const fileInput = document.getElementById("file");
+      const colNameInput = document.getElementById("colName");
+      const sheetNamesInput = document.getElementById("sheetNames");
+      const ratioInput = document.getElementById("ratio");
+      const runBtn = document.getElementById("runBtn");
+      const resultCard = document.getElementById("resultCard");
+      const msgEl = document.getElementById("msg");
+      const summaryEl = document.getElementById("summaryTable");
+      const previewsEl = document.getElementById("previews");
+      const dlBtn = document.getElementById("dlBtn");
+
+      let currentFile = null;
+      let resultBlob = null;
+      let resultName = "";
+      let currentWbForPreview = null;
+
+      drop.addEventListener("click", () => fileInput.click());
+      ["dragover", "dragenter"].forEach((ev) =>
+        drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); })
+      );
+      ["dragleave", "drop"].forEach((ev) =>
+        drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); })
+      );
+      drop.addEventListener("drop", (e) => {
+        const f = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) setFile(f);
+      });
+      fileInput.addEventListener("change", () => {
+        if (fileInput.files && fileInput.files[0]) setFile(fileInput.files[0]);
+      });
+
+      function setFile(f) {
+        currentFile = f;
+        dropText.innerHTML = '<span class="name">' + escapeHtml(f.name) + "</span>（" + formatSize(f.size) + "）";
+        runBtn.disabled = false;
+        resultCard.classList.add("hidden");
+        resultBlob = null;
+      }
+
+      function formatSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / 1024 / 1024).toFixed(1) + " MB";
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, (c) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        }[c]));
+      }
+
+      runBtn.addEventListener("click", async () => {
+        msgEl.className = "msg";
+        msgEl.textContent = "";
+        if (!currentFile) { showError("请先选择文件"); return; }
+        const colName = colNameInput.value.trim();
+        if (!colName) { showError("请输入需要处理的列名"); return; }
+        const sheetNames = sheetNamesInput.value.split(/[,，;；]/).map((s) => s.trim()).filter(Boolean);
+        const ratio = parseFloat(ratioInput.value);
+        if (!isFinite(ratio) || ratio < 0 || ratio > 1) { showError("比例必须是 0 ~ 1 之间的数字"); return; }
+
+        try {
+          runBtn.disabled = true;
+          let wb;
+          const lower = currentFile.name.toLowerCase();
+          if (lower.endsWith(".csv")) {
+            wb = XLSX.read(await currentFile.text(), { type: "string" });
+          } else {
+            wb = XLSX.read(await currentFile.arrayBuffer(), { type: "array" });
+          }
+
+          const summaries = SalaryCore.processWorkbook(wb, colName, ratio, sheetNames.length ? sheetNames : null);
+          const outBuf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+          resultBlob = new Blob([outBuf], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          });
+          const base = currentFile.name.replace(/\.[^.]+$/, "");
+          resultName = "Salary-" + base + ".xlsx";
+
+          currentWbForPreview = wb;
+          renderResults(summaries, colName);
+          dlBtn.textContent = "下载 " + resultName;
+          resultCard.classList.remove("hidden");
+          msgEl.className = "msg ok";
+          const processed = summaries.filter((s) => s.found);
+          const missing = summaries.filter((s) => s.missing);
+          let text = "处理完成："
+            + (sheetNames.length ? "指定 " + sheetNames.length + " 个子表，其中 " : "共 " + summaries.length + " 个子表，其中 ")
+            + processed.length + " 个包含列“" + colName + "”并已追加 Salary 列。";
+          if (missing.length) {
+            text += " 以下子表不存在：" + missing.map((s) => s.sheet).join("、") + "。";
+          }
+          msgEl.textContent = text;
+        } catch (err) {
+          console.error(err);
+          showError("处理失败：文件无法解析，请确认文件格式正确（.xlsx / .xls / .csv）。");
+        } finally {
+          runBtn.disabled = false;
+        }
+      });
+
+      dlBtn.addEventListener("click", () => {
+        if (!resultBlob) return;
+        const url = URL.createObjectURL(resultBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = resultName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+      });
+
+      function showError(text) {
+        msgEl.className = "msg error";
+        msgEl.textContent = text;
+        resultCard.classList.remove("hidden");
+      }
+
+      function renderResults(summaries, colName) {
+        // summary table
+        let html = "<thead><tr><th>子表</th><th>目标列</th><th>状态</th><th>处理行数</th><th>不符合格式</th><th>新增列</th></tr></thead><tbody>";
+        for (const s of summaries) {
+          let status;
+          if (s.missing) status = '<span class="badge no">子表不存在</span>';
+          else if (s.skipped) status = '<span class="badge no" style="background:#f1f3f7;color:var(--muted)">未选择</span>';
+          else status = s.found
+            ? '<span class="badge ok">已处理</span>'
+            : '<span class="badge no">未找到列名</span>';
+          const cols = s.found
+            ? SalaryCore.HEADER1 + "（" + colLetter(s.newColIndex) + "）、" + SalaryCore.HEADER2 + "（" + colLetter(s.newColIndex + 1) + "）"
+            : "—";
+          html += "<tr><td>" + escapeHtml(s.sheet) + "</td><td>"
+            + (s.found ? escapeHtml(colName) : "—") + "</td><td>" + status + "</td><td>"
+            + s.rowsProcessed + "</td><td>" + s.rowsBad + "</td><td>" + cols + "</td></tr>";
+        }
+        html += "</tbody>";
+        summaryEl.innerHTML = html;
+
+        if (currentWbForPreview) renderPreviews(currentWbForPreview, summaries, colName);
+      }
+
+      function colLetter(idx) {
+        return XLSX.utils.encode_col(idx);
+      }
+
+      function renderPreviews(wb, summaries, colName) {
+        let html = "";
+        const MAX_ROWS = 8;
+        for (const s of summaries) {
+          if (!s.found) continue;
+          const sheet = wb.Sheets[s.sheet];
+          if (!sheet) continue;
+          const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+          const endCol = Math.min(s.newColIndex + 1, (aoa[0] || []).length - 1);
+          html += '<div class="sheet-block"><h3>' + escapeHtml(s.sheet) + "</h3>"
+            + '<div class="table-scroll"><table class="preview"><thead><tr>';
+          for (let c = 0; c <= endCol; c++) {
+            const isSalary = c === s.newColIndex || c === s.newColIndex + 1;
+            html += "<th" + (isSalary ? ' style="background:#e0ecff"' : "") + ">"
+              + escapeHtml(aoa[0][c] == null ? "" : aoa[0][c]) + "</th>";
+          }
+          html += "</tr></thead><tbody>";
+          for (let r = 1; r <= Math.min(aoa.length - 1, MAX_ROWS); r++) {
+            const row = aoa[r] || [];
+            html += "<tr>";
+            for (let c = 0; c <= endCol; c++) {
+              const v = row[c];
+              const txt = v == null ? "" : String(v);
+              const cls = c === s.newColIndex || c === s.newColIndex + 1
+                ? (txt === SalaryCore.BAD ? "salary bad" : "salary")
+                : "";
+              html += "<td class='" + cls + "'>" + escapeHtml(txt) + "</td>";
+            }
+            html += "</tr>";
+          }
+          if (aoa.length - 1 > MAX_ROWS) {
+            html += "<tr><td colspan='" + (endCol + 1) + "' style='color:var(--muted);text-align:center'>"
+              + "……共 " + (aoa.length - 1) + " 行数据，预览仅显示前 " + MAX_ROWS + " 行</td></tr>";
+          }
+          html += "</tbody></table></div></div>";
+        }
+        previewsEl.innerHTML = html;
+      }
+
+    })();
+  </script>
+</body>
+</html>

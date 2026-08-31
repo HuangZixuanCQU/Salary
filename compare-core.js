@@ -95,7 +95,6 @@
       if (idx >= 0) pasteIdx.push({ name: cellText(srcHeader[idx]).trim(), idx });
       else skipped.push(w);
     }
-    if (pasteIdx.length === 0) return { ok: false, error: "第一个表格中未找到任何需要粘贴的列名" };
 
     // 建立源表匹配键 -> 行（同键多行取第一行）
     const keyMap = new Map();
@@ -120,7 +119,7 @@
     }
     const newColIndex = maxCol + 1;
 
-    const addRows = [pasteIdx.map((p) => p.name)];
+    const addRows = pasteIdx.length > 0 ? [pasteIdx.map((p) => p.name)] : null;
     const matchedRowIdx = [];
     let matched = 0;
     let unmatched = 0;
@@ -129,29 +128,31 @@
     for (let r = 1; r <= maxRow; r++) {
       const row = tgtAoa[r] || [];
       if (!row.some((v) => !isEmpty(v))) {
-        addRows.push(new Array(pasteIdx.length).fill(null));
+        if (addRows) addRows.push(new Array(pasteIdx.length).fill(null));
         continue;
       }
       const key = matchKey(row[c2]);
       if (!key) {
         unmatched++;
-        addRows.push(new Array(pasteIdx.length).fill(null));
+        if (addRows) addRows.push(new Array(pasteIdx.length).fill(null));
         continue;
       }
       const srcRow = keyMap.get(key.pre + "\u0000" + key.suf);
       if (srcRow) {
         matched++;
         matchedRowIdx.push(r);
-        addRows.push(pasteIdx.map((p) => (srcRow[p.idx] === undefined ? null : srcRow[p.idx])));
+        if (addRows) addRows.push(pasteIdx.map((p) => (srcRow[p.idx] === undefined ? null : srcRow[p.idx])));
       } else {
         unmatched++;
-        addRows.push(new Array(pasteIdx.length).fill(null));
+        if (addRows) addRows.push(new Array(pasteIdx.length).fill(null));
       }
     }
 
-    XLSX.utils.sheet_add_aoa(tgt, addRows, {
-      origin: XLSX.utils.encode_cell({ r: 0, c: newColIndex }),
-    });
+    if (addRows) {
+      XLSX.utils.sheet_add_aoa(tgt, addRows, {
+        origin: XLSX.utils.encode_cell({ r: 0, c: newColIndex }),
+      });
+    }
 
     // 配对成功的行：比对列单元格与粘贴后不为空的单元格背景标为绿色
     const GREEN = "A9D08E";

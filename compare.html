@@ -184,7 +184,7 @@
         <div class="chips" id="pasteChips">
           <span style="color:var(--muted);font-size:13px">请先选择第一个表格</span>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-top:6px">提示：至少勾选一列才能开始比对；若未勾选，点击“开始比对”会给出提示。</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">提示：可不勾选任何列；此时不粘贴信息，仅将配对成功的号码背景高亮为绿色。</div>
       </div>
 
       <div class="actions">
@@ -198,7 +198,7 @@
         ③ 10 位字符：前 2 后 5 相同即配对成功；<br>
         ④ 11 位字符：前 3 后 4 相同即配对成功；<br>
         其他长度不参与配对。配对成功后，把第一个表格对应行中勾选的列，粘贴到第二个表格该行的右侧空列；未配对的行留空。同一匹配值在第一个表格有多行时取第一行。<br>
-        配对成功的行，目标表中“比对号码”单元格和粘贴后不为空的单元格背景会标为绿色。
+        配对成功的行，目标表中“比对号码”单元格和粘贴后不为空的单元格背景会标为绿色；也可以不勾选任何列，此时只高亮配对成功的号码，不粘贴信息。
       </div>
     </section>
 
@@ -389,7 +389,6 @@
         const col2 = compareCol2.value.trim();
         if (!col1 || !col2) { showError("请填写两个表格的比对列名"); return; }
         const cols = getCheckedCols();
-        if (cols.length === 0) { showError("请至少勾选一个需要粘贴的列名"); return; }
         try {
           runBtn.disabled = true;
           const wb1 = await readWorkbook(file1);
@@ -407,7 +406,12 @@
           resultCard.classList.remove("hidden");
           msgEl.className = "msg ok";
           let text = "比对完成：目标表 " + res.targetDataRows + " 行，匹配成功 " + res.matchedRows
-            + " 行，未匹配 " + res.unmatchedRows + " 行；已粘贴列：" + res.pastedColumns.join("、") + "。";
+            + " 行，未匹配 " + res.unmatchedRows + " 行；";
+          if (res.pastedColumns.length > 0) {
+            text += "已粘贴列：" + res.pastedColumns.join("、") + "。";
+          } else {
+            text += "未粘贴任何列，仅将配对成功的号码高亮为绿色。";
+          }
           if (res.skippedColumns.length) {
             text += " 以下勾选列在第一个表格中未找到，已跳过：" + res.skippedColumns.join("、") + "。";
           }
@@ -443,7 +447,7 @@
           + "</td></tr><tr><th>目标数据行</th><td>" + res.targetDataRows
           + "</td></tr><tr><th>匹配成功</th><td>" + res.matchedRows
           + "</td></tr><tr><th>未匹配</th><td>" + res.unmatchedRows
-          + "</td></tr><tr><th>粘贴列</th><td>" + res.pastedColumns.map(escapeHtml).join("、")
+          + "</td></tr><tr><th>粘贴列</th><td>" + (res.pastedColumns.length ? res.pastedColumns.map(escapeHtml).join("、") : "—（仅高亮配对号码）")
           + "</td></tr><tr><th>源表可匹配行</th><td>" + res.srcRowsWithKey + "</td></tr></tbody>";
 
         const sheet = wb.Sheets[sheet2Sel.value];

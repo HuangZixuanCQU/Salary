@@ -154,7 +154,7 @@
     });
 
     // 配对成功的行：比对列单元格与粘贴后不为空的单元格背景标为绿色
-    const GREEN = "C6EFCE";
+    const GREEN = "A9D08E";
     const greenStyle = { fill: { patternType: "solid", fgColor: { rgb: GREEN } } };
     const greenCells = [];
     for (const r of matchedRowIdx) {

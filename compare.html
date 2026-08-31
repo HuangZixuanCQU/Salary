@@ -184,6 +184,7 @@
         <div class="chips" id="pasteChips">
           <span style="color:var(--muted);font-size:13px">请先选择第一个表格</span>
         </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">提示：至少勾选一列才能开始比对；若未勾选，点击“开始比对”会给出提示。</div>
       </div>
 
       <div class="actions">
@@ -325,7 +326,7 @@
       }
 
       function updateRunBtn() {
-        runBtn.disabled = !(file1 && file2 && getCheckedCols().length > 0);
+        runBtn.disabled = !(file1 && file2);
       }
 
       file1Input.addEventListener("change", async () => {

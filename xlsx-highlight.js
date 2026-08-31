@@ -12,7 +12,7 @@
 })(typeof self !== "undefined" ? self : this, function (JSZip) {
   "use strict";
 
-  const GREEN_ARGB = "FFC6EFCE";
+  const GREEN_ARGB = "FFA9D08E";
 
   /**
    * @param {ArrayBuffer|Uint8Array} bytes 由 SheetJS 生成的 xlsx 字节

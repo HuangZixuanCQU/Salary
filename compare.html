@@ -196,7 +196,8 @@
         ② 9 位字符：前 2 后 4 相同即配对成功；<br>
         ③ 10 位字符：前 2 后 5 相同即配对成功；<br>
         ④ 11 位字符：前 3 后 4 相同即配对成功；<br>
-        其他长度不参与配对。配对成功后，把第一个表格对应行中勾选的列，粘贴到第二个表格该行的右侧空列；未配对的行留空。同一匹配值在第一个表格有多行时取第一行。
+        其他长度不参与配对。配对成功后，把第一个表格对应行中勾选的列，粘贴到第二个表格该行的右侧空列；未配对的行留空。同一匹配值在第一个表格有多行时取第一行。<br>
+        配对成功的行，目标表中“比对号码”单元格和粘贴后不为空的单元格背景会标为绿色。
       </div>
     </section>
 
@@ -212,7 +213,9 @@
   </div>
 
   <script src="xlsx.full.min.js"></script>
+  <script src="jszip.min.js"></script>
   <script src="compare-core.js"></script>
+  <script src="xlsx-highlight.js"></script>
   <script>
     (function () {
       "use strict";
@@ -392,7 +395,9 @@
           const wb2 = await readWorkbook(file2);
           const res = CompareCore.processCompare(wb1, sheet1Sel.value, col1, wb2, sheet2Sel.value, col2, cols);
           if (!res.ok) { showError(res.error); return; }
-          resultBlob = new Blob([XLSX.write(wb2, { bookType: "xlsx", type: "array" })], {
+          const outBytes = XLSX.write(wb2, { bookType: "xlsx", type: "array", cellStyles: true });
+          const highlighted = await HighlightXlsx.highlightXlsx(outBytes, { [sheet2Sel.value]: res.greenCells || [] });
+          resultBlob = new Blob([highlighted], {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           });
           resultName = "比对-" + file2.name;

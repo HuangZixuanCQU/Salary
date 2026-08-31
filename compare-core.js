@@ -6,7 +6,8 @@
  *     9 位字符：前 2 后 4 相同即配对
  *     10 位字符：前 2 后 5 相同即配对
  *     11 位字符：前 3 后 4 相同即配对
- *   配对成功后，把第一个表格中用户选定的列，粘贴到第二个表格对应行的右侧空列中。
+ *   配对成功后，把第一个表格中用户选定的列，粘贴到第二个表格对应行的右侧空列中；
+ *   并将配对成功的“比对号码”单元格以及粘贴后不为空的单元格背景标为绿色。
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
@@ -120,6 +121,7 @@
     const newColIndex = maxCol + 1;
 
     const addRows = [pasteIdx.map((p) => p.name)];
+    const matchedRowIdx = [];
     let matched = 0;
     let unmatched = 0;
     const range = XLSX.utils.decode_range(tgt["!ref"]);
@@ -139,6 +141,7 @@
       const srcRow = keyMap.get(key.pre + "\u0000" + key.suf);
       if (srcRow) {
         matched++;
+        matchedRowIdx.push(r);
         addRows.push(pasteIdx.map((p) => (srcRow[p.idx] === undefined ? null : srcRow[p.idx])));
       } else {
         unmatched++;
@@ -150,9 +153,30 @@
       origin: XLSX.utils.encode_cell({ r: 0, c: newColIndex }),
     });
 
+    // 配对成功的行：比对列单元格与粘贴后不为空的单元格背景标为绿色
+    const GREEN = "C6EFCE";
+    const greenStyle = { fill: { patternType: "solid", fgColor: { rgb: GREEN } } };
+    const greenCells = [];
+    for (const r of matchedRowIdx) {
+      const cmpAddr = XLSX.utils.encode_cell({ r, c: c2 });
+      greenCells.push(cmpAddr);
+      const cmpCell = tgt[cmpAddr];
+      if (cmpCell) cmpCell.s = greenStyle;
+      for (let i = 0; i < pasteIdx.length; i++) {
+        const addr = XLSX.utils.encode_cell({ r, c: newColIndex + i });
+        const cell = tgt[addr];
+        if (cell && !isEmpty(cell.v)) {
+          greenCells.push(addr);
+          cell.s = greenStyle;
+        }
+      }
+    }
+
     return {
       ok: true,
       matchedRows: matched,
+      highlightedRows: matchedRowIdx.length,
+      greenCells,
       unmatchedRows: unmatched,
       targetDataRows: matched + unmatched,
       pastedColumns: pasteIdx.map((p) => p.name),

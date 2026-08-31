@@ -7,7 +7,7 @@
  *   3. 恰好 2 个数字且文本包含“升级”：Salary 1 = (大数 - 小数) × 比例；Salary 2 = (大数 - 小数) × (1 - 比例)
  *   4. 其他情况（3 个及以上数字、2 个数字但无“新装”和“升级”、1 个数字但无“新装”、没有数字）：两个单元格均输出“不符合格式，未计算”
  *   “利润额”列：单个数字（正数不带正号、负数带负号），Salary 1 = 数字 × 比例；Salary 2 = 数字 × (1 - 比例)；否则输出“格式不符，未计算”
- *   第二阶段（可选）：按“办理人”列每行“+”的个数 n（0、1、2、3）平分 Salary 1：Salary 1 ÷ (n+1)，追加在 Salary 2 右侧，列名“Salary 1平分”
+ *   第二阶段（可选）：按用户指定列（默认“办理人”）每行“+”的个数 n（0、1、2、3）平分 Salary 1：Salary 1 ÷ (n+1)，追加在 Salary 2 右侧，列名“Salary 1平分”
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
@@ -88,12 +88,15 @@
    * @param {string} columnName 需要处理的列名
    * @param {number} ratio 比例（0 ~ 1）
    * @param {string[]} [sheetNames] 需要处理的子表名列表；不传或空数组则处理全部子表
-   * @param {string} [stage] 第二阶段分配方式（“双人5-5”/“三人3-3-3”/“四人平分”），不传则不进行第二阶段
+   * @param {string} [stage] 第二阶段分配方式（传任意非空值即进行第二阶段）
+   * @param {number} [taxRate] 税率（仅“业务”列生效，0 ~ 1）
+   * @param {string} [agentColumn] 第二阶段统计“+”的列名；留空默认按“办理人”列（兼容“办理人员”等包含“办理人”的列名）
    * @returns 每个子表的处理摘要
    */
-  function processWorkbook(wb, columnName, ratio, sheetNames, stage, taxRate) {
+  function processWorkbook(wb, columnName, ratio, sheetNames, stage, taxRate, agentColumn) {
     const target = String(columnName || "").trim();
     const stageEnabled = typeof stage === "string" && stage.trim() !== "" && stage !== "none";
+    const agentColName = typeof agentColumn === "string" && agentColumn.trim() !== "" ? agentColumn.trim() : "办理人";
     let mode;
     if (target === "利润额") mode = "profit";
     else if (target === "业务") mode = "business";
@@ -186,12 +189,12 @@
 
       const range = XLSX.utils.decode_range(sheet["!ref"]);
       const maxRow = Math.max(range.e.r, aoa.length - 1);
-      // 第二阶段需要“办理人”列（兼容“办理人员”等包含“办理人”的列名）
+      // 第二阶段需要用户指定的列（留空默认“办理人”，兼容“办理人员”等包含该文字的列名）
       let agentColIdx = -1;
       if (stageEnabled) {
         for (let c = 0; c < header.length; c++) {
           const h = cellText(header[c]).trim();
-          if (h === "办理人" || h.indexOf("办理人") !== -1) {
+          if (h === agentColName || h.toLowerCase() === agentColName.toLowerCase() || h.indexOf(agentColName) !== -1) {
             agentColIdx = c;
             break;
           }
@@ -214,7 +217,7 @@
         } else if (stageEnabled) {
           let split;
           if (agentColIdx < 0) {
-            split = "未找到办理人列，未计算";
+            split = "未找到" + agentColName + "列，未计算";
           } else {
             const agentText = cellText(row[agentColIdx]);
             const plusCount = (agentText.match(/\+/g) || []).length;

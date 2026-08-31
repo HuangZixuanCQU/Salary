@@ -7,7 +7,8 @@
  *     10 位字符：前 2 后 5 相同即配对
  *     11 位字符：前 3 后 4 相同即配对
  *   配对成功后，把第一个表格中用户选定的列，粘贴到第二个表格对应行的右侧空列中；
- *   并将配对成功的“比对号码”单元格以及粘贴后不为空的单元格背景标为绿色。
+ *   输出两个表：表1（来源）、表2（目标）。选择粘贴时两个表中配对成功的号码与粘贴信息标绿；
+ *   未选择粘贴时仅两个表中配对成功的号码标绿。
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
@@ -44,6 +45,22 @@
     const ka = matchKey(a);
     const kb = matchKey(b);
     return !!(ka && kb && ka.pre === kb.pre && ka.suf === kb.suf);
+  }
+
+  /**
+   * 解析“x升级y”，返回预期含税价 y - x；无“升级”字样返回 null。
+   */
+  function upgradeDiff(cell) {
+    const m = cellText(cell).match(/(\d+)\s*升级\s*(\d+)/);
+    if (!m) return null;
+    return Number(m[2]) - Number(m[1]);
+  }
+
+  function numbersEqual(a, b) {
+    const na = Number(a);
+    const nb = Number(b);
+    if (!isFinite(na) || !isFinite(nb)) return false;
+    return Math.abs(na - nb) < 1e-6;
   }
 
   /**
@@ -84,6 +101,12 @@
     if (c1 < 0) return { ok: false, error: "第一个表格中未找到比对列“" + compareCol1 + "”" };
     if (c2 < 0) return { ok: false, error: "第二个表格中未找到比对列“" + compareCol2 + "”" };
 
+    // 确认金额相关列（可有可无）
+    const srcBizCol = findColumn(srcHeader, "业务");
+    const tgtTaxCol = findColumn(tgtHeader, "含税价");
+    const tgtBizCol = findColumn(tgtHeader, "业务");
+    const srcTaxCol = findColumn(srcHeader, "含税价");
+
     // 需要粘贴的列（来自第一个表格）
     const wanted = (Array.isArray(pasteCols) ? pasteCols : [])
       .map((s) => String(s || "").trim())
@@ -106,8 +129,15 @@
       if (!key) continue;
       srcRowsWithKey++;
       const k = key.pre + "\u0000" + key.suf;
-      if (!keyMap.has(k)) keyMap.set(k, row);
+      if (!keyMap.has(k)) keyMap.set(k, { row, idx: r });
     }
+
+    // 绿色高亮样式
+    const GREEN = "A9D08E";
+    const greenStyle = { fill: { patternType: "solid", fgColor: { rgb: GREEN } } };
+    const confirmTgtCells = [];
+    const confirmSrcCells = [];
+    let amountConfirmedRows = 0;
 
     // 目标表最右侧数据列
     let maxCol = 0;
@@ -121,6 +151,7 @@
 
     const addRows = pasteIdx.length > 0 ? [pasteIdx.map((p) => p.name)] : null;
     const matchedRowIdx = [];
+    const matchedKeys = new Set();
     let matched = 0;
     let unmatched = 0;
     const range = XLSX.utils.decode_range(tgt["!ref"]);
@@ -137,11 +168,35 @@
         if (addRows) addRows.push(new Array(pasteIdx.length).fill(null));
         continue;
       }
-      const srcRow = keyMap.get(key.pre + "\u0000" + key.suf);
-      if (srcRow) {
+      const srcEntry = keyMap.get(key.pre + "\u0000" + key.suf);
+      if (srcEntry) {
+        const srcRow = srcEntry.row;
         matched++;
         matchedRowIdx.push(r);
+        matchedKeys.add(key.pre + "\u0000" + key.suf);
         if (addRows) addRows.push(pasteIdx.map((p) => (srcRow[p.idx] === undefined ? null : srcRow[p.idx])));
+        let rowConfirmed = false;
+        // 确认金额：表1 业务“x升级y”的预期含税价 与 表2 含税价 比较
+        if (srcBizCol >= 0 && tgtTaxCol >= 0) {
+          const expected = upgradeDiff(srcRow[srcBizCol]);
+          if (expected !== null && numbersEqual(expected, row[tgtTaxCol])) {
+            const addr = XLSX.utils.encode_cell({ r, c: tgtTaxCol });
+            confirmTgtCells.push(addr);
+            if (tgt[addr]) tgt[addr].s = greenStyle;
+            rowConfirmed = true;
+          }
+        }
+        // 反向：表2 业务 与 表1 含税价
+        if (tgtBizCol >= 0 && srcTaxCol >= 0) {
+          const expected = upgradeDiff(row[tgtBizCol]);
+          if (expected !== null && numbersEqual(expected, srcRow[srcTaxCol])) {
+            const addr = XLSX.utils.encode_cell({ r: srcEntry.idx, c: srcTaxCol });
+            confirmSrcCells.push(addr);
+            if (src[addr]) src[addr].s = greenStyle;
+            rowConfirmed = true;
+          }
+        }
+        if (rowConfirmed) amountConfirmedRows++;
       } else {
         unmatched++;
         if (addRows) addRows.push(new Array(pasteIdx.length).fill(null));
@@ -154,9 +209,7 @@
       });
     }
 
-    // 配对成功的行：比对列单元格与粘贴后不为空的单元格背景标为绿色
-    const GREEN = "A9D08E";
-    const greenStyle = { fill: { patternType: "solid", fgColor: { rgb: GREEN } } };
+    // 表2（目标）：配对成功的行，比对列单元格与粘贴后不为空的单元格背景标为绿色
     const greenCells = [];
     for (const r of matchedRowIdx) {
       const cmpAddr = XLSX.utils.encode_cell({ r, c: c2 });
@@ -172,12 +225,47 @@
         }
       }
     }
+    for (const addr of confirmTgtCells) greenCells.push(addr);
+
+    // 表1（来源）：被配对到的行，比对列单元格与选定的粘贴信息单元格标为绿色
+    const srcGreenCells = [];
+    const srcMatchedRowIdx = [];
+    let srcMatchedRows = 0;
+    for (let r = 1; r < srcAoa.length; r++) {
+      const row = srcAoa[r] || [];
+      if (!row.some((v) => !isEmpty(v))) continue;
+      const key = matchKey(row[c1]);
+      if (!key || !matchedKeys.has(key.pre + "\u0000" + key.suf)) continue;
+      srcMatchedRows++;
+      srcMatchedRowIdx.push(r);
+      const cmpAddr = XLSX.utils.encode_cell({ r, c: c1 });
+      srcGreenCells.push(cmpAddr);
+      const cmpCell = src[cmpAddr];
+      if (cmpCell) cmpCell.s = greenStyle;
+      for (const p of pasteIdx) {
+        const addr = XLSX.utils.encode_cell({ r, c: p.idx });
+        const cell = src[addr];
+        if (cell && !isEmpty(cell.v)) {
+          srcGreenCells.push(addr);
+          cell.s = greenStyle;
+        }
+      }
+    }
+    for (const addr of confirmSrcCells) srcGreenCells.push(addr);
 
     return {
       ok: true,
       matchedRows: matched,
       highlightedRows: matchedRowIdx.length,
       greenCells,
+      srcGreenCells,
+      srcMatchedRows,
+      srcMatchedRowIdx,
+      srcCompareColIndex: c1,
+      srcPasteColIndexes: pasteIdx.map((p) => p.idx),
+      amountConfirmedRows,
+      confirmTgtCells,
+      confirmSrcCells,
       unmatchedRows: unmatched,
       targetDataRows: matched + unmatched,
       pastedColumns: pasteIdx.map((p) => p.name),
@@ -191,6 +279,8 @@
     matchKey,
     keysMatch,
     findColumn,
+    upgradeDiff,
+    numbersEqual,
     processCompare,
   };
 });

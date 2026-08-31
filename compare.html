@@ -116,6 +116,8 @@
     }
     table.summary th { background: #f7f9fc; font-weight: 600; }
     .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; margin-top: 14px; }
+    .sheet-block { margin-top: 18px; }
+    .sheet-block h3 { margin: 0 0 8px; font-size: 15px; }
     table.preview { border-collapse: collapse; font-size: 13px; white-space: nowrap; }
     table.preview th, table.preview td {
       border: 1px solid var(--line);
@@ -198,7 +200,8 @@
         ③ 10 位字符：前 2 后 5 相同即配对成功；<br>
         ④ 11 位字符：前 3 后 4 相同即配对成功；<br>
         其他长度不参与配对。配对成功后，把第一个表格对应行中勾选的列，粘贴到第二个表格该行的右侧空列；未配对的行留空。同一匹配值在第一个表格有多行时取第一行。<br>
-        配对成功的行，目标表中“比对号码”单元格和粘贴后不为空的单元格背景会标为绿色；也可以不勾选任何列，此时只高亮配对成功的号码，不粘贴信息。
+        输出文件包含两个子表：“表1-来源表名”和“表2-目标表名”。选择粘贴列时，两个表中配对成功的号码及粘贴的信息都会绿色高亮；不勾选任何列时，仅两个表中配对成功的号码绿色高亮，不粘贴信息。<br>
+        <b>确认金额：</b>若某个表格存在“业务”列且业务为“x升级y”，计算 y−x 作为预期含税价；另一表格存在“含税价”列时，若两者数值相等，将该“含税价”单元格绿色高亮（两个方向都会检查）。
       </div>
     </section>
 
@@ -395,22 +398,34 @@
           const wb2 = await readWorkbook(file2);
           const res = CompareCore.processCompare(wb1, sheet1Sel.value, col1, wb2, sheet2Sel.value, col2, cols);
           if (!res.ok) { showError(res.error); return; }
-          const outBytes = XLSX.write(wb2, { bookType: "xlsx", type: "array", cellStyles: true });
-          const highlighted = await HighlightXlsx.highlightXlsx(outBytes, { [sheet2Sel.value]: res.greenCells || [] });
+          const srcName = "表1-" + sheet1Sel.value;
+          const tgtName = "表2-" + sheet2Sel.value;
+          const outWb = XLSX.utils.book_new();
+          outWb.Sheets[srcName] = wb1.Sheets[sheet1Sel.value];
+          outWb.Sheets[tgtName] = wb2.Sheets[sheet2Sel.value];
+          outWb.SheetNames = [srcName, tgtName];
+          const outBytes = XLSX.write(outWb, { bookType: "xlsx", type: "array", cellStyles: true });
+          const highlighted = await HighlightXlsx.highlightXlsx(outBytes, {
+            [srcName]: res.srcGreenCells || [],
+            [tgtName]: res.greenCells || [],
+          });
           resultBlob = new Blob([highlighted], {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           });
           resultName = "比对-" + file2.name;
-          renderResults(res, wb2);
+          renderResults(res, wb1, wb2, srcName, tgtName);
           dlBtn.textContent = "下载 " + resultName;
           resultCard.classList.remove("hidden");
           msgEl.className = "msg ok";
           let text = "比对完成：目标表 " + res.targetDataRows + " 行，匹配成功 " + res.matchedRows
             + " 行，未匹配 " + res.unmatchedRows + " 行；";
           if (res.pastedColumns.length > 0) {
-            text += "已粘贴列：" + res.pastedColumns.join("、") + "。";
+            text += "已粘贴列：" + res.pastedColumns.join("、") + "；表1、表2中配对成功的号码及粘贴信息已绿色高亮。";
           } else {
-            text += "未粘贴任何列，仅将配对成功的号码高亮为绿色。";
+            text += "未粘贴任何列，表1、表2中配对成功的号码已绿色高亮。";
+          }
+          if (res.amountConfirmedRows > 0) {
+            text += " 确认金额：" + res.amountConfirmedRows + " 行含税价一致，已绿色高亮。";
           }
           if (res.skippedColumns.length) {
             text += " 以下勾选列在第一个表格中未找到，已跳过：" + res.skippedColumns.join("、") + "。";
@@ -442,40 +457,69 @@
         resultCard.classList.remove("hidden");
       }
 
-      function renderResults(res, wb) {
+      function renderResults(res, wb1, wb2, srcName, tgtName) {
         summaryEl.innerHTML = "<tbody><tr><th>目标子表</th><td>" + escapeHtml(sheet2Sel.value)
           + "</td></tr><tr><th>目标数据行</th><td>" + res.targetDataRows
           + "</td></tr><tr><th>匹配成功</th><td>" + res.matchedRows
           + "</td></tr><tr><th>未匹配</th><td>" + res.unmatchedRows
           + "</td></tr><tr><th>粘贴列</th><td>" + (res.pastedColumns.length ? res.pastedColumns.map(escapeHtml).join("、") : "—（仅高亮配对号码）")
+          + "</td></tr><tr><th>表1配对行</th><td>" + res.srcMatchedRows
+          + "</td></tr><tr><th>确认金额</th><td>" + res.amountConfirmedRows
           + "</td></tr><tr><th>源表可匹配行</th><td>" + res.srcRowsWithKey + "</td></tr></tbody>";
 
-        const sheet = wb.Sheets[sheet2Sel.value];
-        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
-        const endCol = Math.min(res.newColIndex + res.pastedColumns.length - 1, (aoa[0] || []).length - 1);
-        let html = '<div class="table-scroll"><table class="preview"><thead><tr>';
-        for (let c = 0; c <= endCol; c++) {
-          const pasted = c >= res.newColIndex;
-          html += "<th" + (pasted ? ' style="background:#e0ecff"' : "") + ">"
-            + escapeHtml(aoa[0][c] == null ? "" : aoa[0][c]) + "</th>";
+        const MAX_ROWS = 10;
+        const srcAoa = XLSX.utils.sheet_to_json(wb1.Sheets[sheet1Sel.value], { header: 1, defval: null });
+        const srcEndCol = Math.max((srcAoa[0] || []).length - 1, res.srcCompareColIndex);
+        let html = '<div class="sheet-block"><h3>表1（来源）' + escapeHtml(sheet1Sel.value) + "</h3>"
+          + '<div class="table-scroll"><table class="preview"><thead><tr>';
+        for (let c = 0; c <= srcEndCol; c++) {
+          html += "<th>" + escapeHtml(srcAoa[0][c] == null ? "" : srcAoa[0][c]) + "</th>";
         }
         html += "</tr></thead><tbody>";
-        const MAX_ROWS = 10;
-        for (let r = 1; r <= Math.min(aoa.length - 1, MAX_ROWS); r++) {
-          const row = aoa[r] || [];
+        for (let r = 1; r <= Math.min(srcAoa.length - 1, MAX_ROWS); r++) {
+          const row = srcAoa[r] || [];
+          const isMatched = res.srcMatchedRowIdx.includes(r);
           html += "<tr>";
-          for (let c = 0; c <= endCol; c++) {
+          for (let c = 0; c <= srcEndCol; c++) {
+            const isGreen = isMatched && (c === res.srcCompareColIndex || res.srcPasteColIndexes.includes(c));
+            const isConfirm = res.confirmSrcCells.includes(XLSX.utils.encode_cell({ r, c }));
             const v = row[c];
-            const txt = v == null ? "" : String(v);
-            html += "<td class='" + (c >= res.newColIndex ? "pasted" : "") + "'>" + escapeHtml(txt) + "</td>";
+            html += "<td class='" + (isGreen || isConfirm ? "pasted" : "") + "'>" + escapeHtml(v == null ? "" : String(v)) + "</td>";
           }
           html += "</tr>";
         }
-        if (aoa.length - 1 > MAX_ROWS) {
-          html += "<tr><td colspan='" + (endCol + 1) + "' style='color:var(--muted);text-align:center'>"
-            + "……共 " + (aoa.length - 1) + " 行数据，预览仅显示前 " + MAX_ROWS + " 行</td></tr>";
+        if (srcAoa.length - 1 > MAX_ROWS) {
+          html += "<tr><td colspan='" + (srcEndCol + 1) + "' style='color:var(--muted);text-align:center'>"
+            + "……共 " + (srcAoa.length - 1) + " 行数据，预览仅显示前 " + MAX_ROWS + " 行</td></tr>";
         }
-        html += "</tbody></table></div>";
+        html += "</tbody></table></div></div>";
+
+        const tgtAoa = XLSX.utils.sheet_to_json(wb2.Sheets[sheet2Sel.value], { header: 1, defval: null });
+        const tgtEndCol = Math.min(res.newColIndex + Math.max(res.pastedColumns.length - 1, 0), (tgtAoa[0] || []).length - 1);
+        html += '<div class="sheet-block"><h3>表2（目标）' + escapeHtml(sheet2Sel.value) + "</h3>"
+          + '<div class="table-scroll"><table class="preview"><thead><tr>';
+        for (let c = 0; c <= tgtEndCol; c++) {
+          const pasted = res.pastedColumns.length > 0 && c >= res.newColIndex;
+          html += "<th" + (pasted ? ' style="background:#e0ecff"' : "") + ">"
+            + escapeHtml(tgtAoa[0][c] == null ? "" : tgtAoa[0][c]) + "</th>";
+        }
+        html += "</tr></thead><tbody>";
+        for (let r = 1; r <= Math.min(tgtAoa.length - 1, MAX_ROWS); r++) {
+          const row = tgtAoa[r] || [];
+          html += "<tr>";
+          for (let c = 0; c <= tgtEndCol; c++) {
+            const v = row[c];
+            const pasted = res.pastedColumns.length > 0 && c >= res.newColIndex;
+            const isConfirm = res.confirmTgtCells.includes(XLSX.utils.encode_cell({ r, c }));
+            html += "<td class='" + (pasted || isConfirm ? "pasted" : "") + "'>" + escapeHtml(v == null ? "" : String(v)) + "</td>";
+          }
+          html += "</tr>";
+        }
+        if (tgtAoa.length - 1 > MAX_ROWS) {
+          html += "<tr><td colspan='" + (tgtEndCol + 1) + "' style='color:var(--muted);text-align:center'>"
+            + "……共 " + (tgtAoa.length - 1) + " 行数据，预览仅显示前 " + MAX_ROWS + " 行</td></tr>";
+        }
+        html += "</tbody></table></div></div>";
         previewEl.innerHTML = html;
       }
     })();

@@ -2,8 +2,9 @@
  * Salary 计算核心逻辑（浏览器 / Node.js 通用）
  * 规则：
  *   1. 单元格中恰好 1 个数字且文本包含“新装”：Salary 1 = 数字 × 比例；Salary 2 = 数字 × (1 - 比例)
- *   2. 恰好 2 个数字且文本包含“升级”：Salary 1 = (大数 - 小数) × 比例；Salary 2 = (大数 - 小数) × (1 - 比例)
- *   3. 其他情况（3 个及以上数字、2 个数字但不含“升级”、1 个数字但不含“新装”、没有数字）：两个单元格均输出“不符合格式，未计算”
+ *   2. 恰好 2 个数字且文本包含“新装”：取“新装”后面的数字 n，Salary 1 = n × 比例；Salary 2 = n × (1 - 比例)
+ *   3. 恰好 2 个数字且文本包含“升级”：Salary 1 = (大数 - 小数) × 比例；Salary 2 = (大数 - 小数) × (1 - 比例)
+ *   4. 其他情况（3 个及以上数字、2 个数字但无“新装”和“升级”、1 个数字但无“新装”、没有数字）：两个单元格均输出“不符合格式，未计算”
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
@@ -18,6 +19,11 @@
   const BAD_PROFIT = "格式不符，未计算";
   const HEADER1 = "Salary 1";
   const HEADER2 = "Salary 2";
+  const STAGE_OPTIONS = {
+    "双人5-5": { label: "Salary 1双人分", factor: 0.5 },
+    "三人3-3-3": { label: "Salary 1三人分", factor: 0.33 },
+    "四人平分": { label: "Salary 1四人分", factor: 0.25 },
+  };
 
   function cellText(v) {
     if (v === null || v === undefined) return "";
@@ -40,6 +46,14 @@
       }
       return { ok: false };
     }
+    if (nums.length === 2 && text.indexOf("新装") !== -1) {
+      const m = text.match(/新装\s*(\d+)/);
+      if (m) {
+        const n = Number(m[1]);
+        return { ok: true, s1: round2(n * ratio), s2: round2(n * (1 - ratio)) };
+      }
+      return { ok: false };
+    }
     if (nums.length === 2 && text.indexOf("升级") !== -1) {
       const diff = Math.abs(nums[0] - nums[1]);
       return { ok: true, s1: round2(diff * ratio), s2: round2(diff * (1 - ratio)) };
@@ -47,10 +61,10 @@
     return { ok: false };
   }
 
-  const SIGNED_NUM_RE = /^[+-]\d+(?:\.\d+)?$/;
+  const SIGNED_NUM_RE = /^[+-]?\d+(?:\.\d+)?$/;
 
   /**
-   * “利润额”列规则：单元格必须是单个带正负号的数字（如 +120、-35.5）。
+   * “利润额”列规则：单元格必须是单个数字（正数不带正号如 120，负数带负号如 -35.5）。
    * 符合格式：Salary 1 = 数字 × 比例；Salary 2 = 数字 × (1 - 比例)。
    */
   function computeProfitRow(cell, ratio) {
@@ -74,10 +88,12 @@
    * @param {string} columnName 需要处理的列名
    * @param {number} ratio 比例（0 ~ 1）
    * @param {string[]} [sheetNames] 需要处理的子表名列表；不传或空数组则处理全部子表
+   * @param {string} [stage] 第二阶段分配方式（“双人5-5”/“三人3-3-3”/“四人平分”），不传则不进行第二阶段
    * @returns 每个子表的处理摘要
    */
-  function processWorkbook(wb, columnName, ratio, sheetNames) {
+  function processWorkbook(wb, columnName, ratio, sheetNames, stage) {
     const target = String(columnName || "").trim();
+    const stageInfo = stage && STAGE_OPTIONS[stage] ? STAGE_OPTIONS[stage] : null;
     let mode;
     if (target === "利润额") mode = "profit";
     else if (target === "业务") mode = "business";
@@ -170,7 +186,7 @@
 
       const range = XLSX.utils.decode_range(sheet["!ref"]);
       const maxRow = Math.max(range.e.r, aoa.length - 1);
-      const addRows = [[HEADER1, HEADER2]];
+      const addRows = [[HEADER1, HEADER2, ...(stageInfo ? [stageInfo.label] : [])]];
 
       for (let r = 1; r <= maxRow; r++) {
         const row = aoa[r] || [];
@@ -183,9 +199,9 @@
         const res = mode === "profit" ? computeProfitRow(row[colIdx], ratio) : computeRow(row[colIdx], ratio);
         if (!res.ok) {
           summary.rowsBad++;
-          addRows.push([badText, badText]);
+          addRows.push(stageInfo ? [badText, badText, badText] : [badText, badText]);
         } else {
-          addRows.push([res.s1, res.s2]);
+          addRows.push(stageInfo ? [res.s1, res.s2, round2(res.s1 * stageInfo.factor)] : [res.s1, res.s2]);
         }
       }
 
@@ -194,12 +210,15 @@
       });
       // 新增的数值单元格显示两位小数
       for (let r = 1; r < addRows.length; r++) {
-        for (let c = newColIndex; c <= newColIndex + 1; c++) {
+        const lastNewCol = newColIndex + (stageInfo ? 2 : 1);
+        for (let c = newColIndex; c <= lastNewCol; c++) {
           const addr = XLSX.utils.encode_cell({ r, c });
           const cell = sheet[addr];
           if (cell && typeof cell.v === "number") cell.z = "0.00";
         }
       }
+      summary.stageLabel = stageInfo ? stageInfo.label : null;
+      summary.stageColIndex = stageInfo ? newColIndex + 2 : -1;
       summaries.push(summary);
     }
     return summaries;
@@ -210,6 +229,7 @@
     BAD_PROFIT,
     HEADER1,
     HEADER2,
+    STAGE_OPTIONS,
     extractNumbers,
     computeRow,
     computeProfitRow,

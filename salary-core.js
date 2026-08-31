@@ -7,7 +7,7 @@
  *   3. 恰好 2 个数字且文本包含“升级”：Salary 1 = (大数 - 小数) × 比例；Salary 2 = (大数 - 小数) × (1 - 比例)
  *   4. 其他情况（3 个及以上数字、2 个数字但无“新装”和“升级”、1 个数字但无“新装”、没有数字）：两个单元格均输出“不符合格式，未计算”
  *   “利润额”列：单个数字（正数不带正号、负数带负号），Salary 1 = 数字 × 比例；Salary 2 = 数字 × (1 - 比例)；否则输出“格式不符，未计算”
- *   第二阶段（可选）：按“受理人”列每行“+”的个数 n（0、1、2、3）平分 Salary 1：Salary 1 ÷ (n+1)，追加在 Salary 2 右侧，列名“Salary 1平分”
+ *   第二阶段（可选）：按“办理人”列每行“+”的个数 n（0、1、2、3）平分 Salary 1：Salary 1 ÷ (n+1)，追加在 Salary 2 右侧，列名“Salary 1平分”
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
@@ -186,12 +186,12 @@
 
       const range = XLSX.utils.decode_range(sheet["!ref"]);
       const maxRow = Math.max(range.e.r, aoa.length - 1);
-      // 第二阶段需要“受理人”列
+      // 第二阶段需要“办理人”列（兼容“办理人员”等包含“办理人”的列名）
       let agentColIdx = -1;
       if (stageEnabled) {
         for (let c = 0; c < header.length; c++) {
           const h = cellText(header[c]).trim();
-          if (h === "受理人" || h.toLowerCase() === "受理人") {
+          if (h === "办理人" || h.indexOf("办理人") !== -1) {
             agentColIdx = c;
             break;
           }
@@ -214,7 +214,7 @@
         } else if (stageEnabled) {
           let split;
           if (agentColIdx < 0) {
-            split = "未找到受理人列，未计算";
+            split = "未找到办理人列，未计算";
           } else {
             const agentText = cellText(row[agentColIdx]);
             const plusCount = (agentText.match(/\+/g) || []).length;

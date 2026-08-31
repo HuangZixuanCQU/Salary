@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>表格比对工具</title>
+  <style>
+    :root {
+      --bg: #f4f6fa;
+      --card: #ffffff;
+      --line: #e3e8f0;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --accent-dark: #1d4ed8;
+      --ok: #16a34a;
+      --bad: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+      line-height: 1.6;
+    }
+    .wrap { max-width: 1000px; margin: 0 auto; padding: 32px 20px 64px; }
+    header { text-align: center; margin-bottom: 24px; position: relative; }
+    header h1 { margin: 0 0 6px; font-size: 26px; }
+    header p { margin: 0; color: var(--muted); font-size: 14px; }
+    .nav-link { position: absolute; right: 0; top: 4px; font-size: 13px; color: var(--accent); text-decoration: none; }
+    .nav-link:hover { text-decoration: underline; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 22px 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+    }
+    .card h2 { margin: 0 0 14px; font-size: 17px; }
+    .files { display: flex; gap: 16px; flex-wrap: wrap; }
+    .file-box { flex: 1 1 300px; }
+    .drop {
+      border: 2px dashed #b9c6dc;
+      border-radius: 10px;
+      padding: 18px 14px;
+      text-align: center;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      background: #fafbfd;
+      font-size: 13px;
+    }
+    .drop:hover, .drop.over { border-color: var(--accent); background: #f0f5ff; }
+    .drop .name { color: var(--text); font-weight: 600; word-break: break-all; font-size: 14px; }
+    .fields { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 18px; }
+    .field { flex: 1 1 200px; }
+    .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .field input, .field select {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      background: #fff;
+      color: var(--text);
+    }
+    .field input:focus, .field select:focus { outline: 2px solid rgba(37, 99, 235, 0.35); border-color: var(--accent); }
+    .paste-block { margin-top: 18px; }
+    .paste-block .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+    .paste-block .bar span { font-size: 13px; color: var(--muted); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 13px;
+      background: #fafbfd;
+      cursor: pointer;
+      user-select: none;
+    }
+    .chip input { accent-color: var(--accent); }
+    .chip.checked { background: #eef4ff; border-color: var(--accent); }
+    .actions { margin-top: 18px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    button {
+      font-family: inherit;
+      font-size: 14px;
+      padding: 10px 22px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+    .primary { background: var(--accent); color: #fff; }
+    .primary:hover { background: var(--accent-dark); }
+    .primary:disabled { background: #9db8f0; cursor: not-allowed; }
+    .link-btn { background: #fff; color: var(--accent); border-color: var(--accent); }
+    .link-btn:hover { background: #f0f5ff; }
+    .msg { margin-top: 14px; font-size: 14px; }
+    .msg.error { color: var(--bad); }
+    .msg.ok { color: var(--ok); }
+    table.summary {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin-top: 6px;
+    }
+    table.summary th, table.summary td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: left;
+    }
+    table.summary th { background: #f7f9fc; font-weight: 600; }
+    .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; margin-top: 14px; }
+    table.preview { border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+    table.preview th, table.preview td {
+      border: 1px solid var(--line);
+      padding: 6px 10px;
+      max-width: 240px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    table.preview th { background: #f7f9fc; font-weight: 600; }
+    table.preview td.pasted { background: #eef4ff; }
+    .hidden { display: none; }
+    .rules { font-size: 13px; color: var(--muted); background: #fafbfd; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-top: 14px; }
+    .rules b { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>表格比对工具</h1>
+      <p>按指定列的字符前缀/后缀规则匹配两个表格，把第一个表格选定的列粘贴到第二个表格右侧空列</p>
+      <a class="nav-link" href="index.html">← 返回薪酬计算模块</a>
+    </header>
+
+    <section class="card">
+      <h2>1. 上传与设置</h2>
+      <div class="files">
+        <div class="file-box">
+          <div class="drop" id="drop1">
+            <div id="drop1Text">点击选择第一个表格（数据来源，用于复制信息）</div>
+          </div>
+          <input type="file" id="file1" accept=".xlsx,.xls,.csv" class="hidden">
+          <div class="field" style="margin-top:10px">
+            <label for="sheet1">第一个表格的子表</label>
+            <select id="sheet1"></select>
+          </div>
+        </div>
+        <div class="file-box">
+          <div class="drop" id="drop2">
+            <div id="drop2Text">点击选择第二个表格（目标表格，粘贴到右侧空列）</div>
+          </div>
+          <input type="file" id="file2" accept=".xlsx,.xls,.csv" class="hidden">
+          <div class="field" style="margin-top:10px">
+            <label for="sheet2">第二个表格的子表</label>
+            <select id="sheet2"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="fields">
+        <div class="field">
+          <label for="compareCol1">第一个表格的比对列名</label>
+          <input type="text" id="compareCol1" placeholder="例如：介入号">
+        </div>
+        <div class="field">
+          <label for="compareCol2">第二个表格的比对列名</label>
+          <input type="text" id="compareCol2" placeholder="例如：宽带介入号">
+        </div>
+      </div>
+
+      <div class="paste-block">
+        <div class="bar">
+          <span>需要从第一个表格粘贴的列（多选/单选）：</span>
+          <button class="link-btn" id="selAll">全选</button>
+          <button class="link-btn" id="selNone">全不选</button>
+        </div>
+        <div class="chips" id="pasteChips">
+          <span style="color:var(--muted);font-size:13px">请先选择第一个表格</span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="runBtn" disabled>开始比对</button>
+      </div>
+
+      <div class="rules">
+        <b>匹配规则（按比对列单元格字符数量）：</b><br>
+        ① 7 位字符：前 2 后 2 相同即配对成功；<br>
+        ② 9 位字符：前 2 后 4 相同即配对成功；<br>
+        ③ 10 位字符：前 2 后 5 相同即配对成功；<br>
+        ④ 11 位字符：前 3 后 4 相同即配对成功；<br>
+        其他长度不参与配对。配对成功后，把第一个表格对应行中勾选的列，粘贴到第二个表格该行的右侧空列；未配对的行留空。同一匹配值在第一个表格有多行时取第一行。
+      </div>
+    </section>
+
+    <section class="card hidden" id="resultCard">
+      <h2>2. 比对结果</h2>
+      <div class="msg" id="msg"></div>
+      <table class="summary" id="summaryTable"></table>
+      <div id="preview"></div>
+      <div class="actions">
+        <button class="primary" id="dlBtn">下载比对结果</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="xlsx.full.min.js"></script>
+  <script src="compare-core.js"></script>
+  <script>
+    (function () {
+      "use strict";
+      const drop1 = document.getElementById("drop1");
+      const drop2 = document.getElementById("drop2");
+      const file1Input = document.getElementById("file1");
+      const file2Input = document.getElementById("file2");
+      const sheet1Sel = document.getElementById("sheet1");
+      const sheet2Sel = document.getElementById("sheet2");
+      const compareCol1 = document.getElementById("compareCol1");
+      const compareCol2 = document.getElementById("compareCol2");
+      const pasteChips = document.getElementById("pasteChips");
+      const runBtn = document.getElementById("runBtn");
+      const resultCard = document.getElementById("resultCard");
+      const msgEl = document.getElementById("msg");
+      const summaryEl = document.getElementById("summaryTable");
+      const previewEl = document.getElementById("preview");
+      const dlBtn = document.getElementById("dlBtn");
+
+      let file1 = null;
+      let file2 = null;
+      let resultBlob = null;
+      let resultName = "";
+
+      function bindDrop(dropEl, inputEl, textId) {
+        dropEl.addEventListener("click", () => inputEl.click());
+        ["dragover", "dragenter"].forEach((ev) =>
+          dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.add("over"); })
+        );
+        ["dragleave", "drop"].forEach((ev) =>
+          dropEl.addEventListener(ev, (e) => { e.preventDefault(); dropEl.classList.remove("over"); })
+        );
+        dropEl.addEventListener("drop", (e) => {
+          const f = e.dataTransfer.files && e.dataTransfer.files[0];
+          if (f) {
+            inputEl.files = e.dataTransfer.files;
+            inputEl.dispatchEvent(new Event("change"));
+          }
+        });
+      }
+      bindDrop(drop1, file1Input, "drop1Text");
+      bindDrop(drop2, file2Input, "drop2Text");
+
+      function formatSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / 1024 / 1024).toFixed(1) + " MB";
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, (c) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        }[c]));
+      }
+
+      async function readWorkbook(file) {
+        const lower = file.name.toLowerCase();
+        if (lower.endsWith(".csv")) {
+          return XLSX.read(await file.text(), { type: "string" });
+        }
+        return XLSX.read(await file.arrayBuffer(), { type: "array" });
+      }
+
+      function fillSheetSelect(sel, wb, keep) {
+        sel.innerHTML = "";
+        for (const name of wb.SheetNames) {
+          const opt = document.createElement("option");
+          opt.value = name;
+          opt.textContent = name;
+          sel.appendChild(opt);
+        }
+        if (keep && wb.SheetNames.includes(keep)) sel.value = keep;
+      }
+
+      function fillPasteChips(wb, sheetName) {
+        pasteChips.innerHTML = "";
+        const sheet = wb.Sheets[sheetName];
+        if (!sheet || !sheet["!ref"]) {
+          pasteChips.innerHTML = '<span style="color:var(--muted);font-size:13px">该子表为空，没有可粘贴的列</span>';
+          return;
+        }
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+        const header = aoa[0] || [];
+        let any = false;
+        for (const h of header) {
+          const name = String(h == null ? "" : h).trim();
+          if (!name) continue;
+          any = true;
+          const label = document.createElement("label");
+          label.className = "chip";
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.value = name;
+          cb.addEventListener("change", () => {
+            label.classList.toggle("checked", cb.checked);
+            updateRunBtn();
+          });
+          label.appendChild(cb);
+          label.appendChild(document.createTextNode(name));
+          pasteChips.appendChild(label);
+        }
+        if (!any) pasteChips.innerHTML = '<span style="color:var(--muted);font-size:13px">没有可用的列名</span>';
+      }
+
+      function getCheckedCols() {
+        return Array.from(pasteChips.querySelectorAll("input[type=checkbox]:checked")).map((cb) => cb.value);
+      }
+
+      function updateRunBtn() {
+        runBtn.disabled = !(file1 && file2 && getCheckedCols().length > 0);
+      }
+
+      file1Input.addEventListener("change", async () => {
+        if (!file1Input.files || !file1Input.files[0]) return;
+        file1 = file1Input.files[0];
+        document.getElementById("drop1Text").innerHTML = '<span class="name">' + escapeHtml(file1.name) + "</span>（" + formatSize(file1.size) + "）";
+        try {
+          const wb = await readWorkbook(file1);
+          const prev = sheet1Sel.value;
+          fillSheetSelect(sheet1Sel, wb, prev && wb.SheetNames.includes(prev) ? prev : wb.SheetNames[0]);
+          fillPasteChips(wb, sheet1Sel.value);
+        } catch (e) {
+          showError("无法解析第一个表格文件");
+        }
+        updateRunBtn();
+      });
+
+      file2Input.addEventListener("change", async () => {
+        if (!file2Input.files || !file2Input.files[0]) return;
+        file2 = file2Input.files[0];
+        document.getElementById("drop2Text").innerHTML = '<span class="name">' + escapeHtml(file2.name) + "</span>（" + formatSize(file2.size) + "）";
+        try {
+          const wb = await readWorkbook(file2);
+          const prev = sheet2Sel.value;
+          fillSheetSelect(sheet2Sel, wb, prev && wb.SheetNames.includes(prev) ? prev : wb.SheetNames[0]);
+        } catch (e) {
+          showError("无法解析第二个表格文件");
+        }
+        updateRunBtn();
+      });
+
+      sheet1Sel.addEventListener("change", async () => {
+        if (!file1) return;
+        try {
+          const wb = await readWorkbook(file1);
+          fillPasteChips(wb, sheet1Sel.value);
+        } catch (e) { /* ignore */ }
+        updateRunBtn();
+      });
+
+      document.getElementById("selAll").addEventListener("click", () => {
+        pasteChips.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+          cb.checked = true;
+          cb.closest(".chip").classList.add("checked");
+        });
+        updateRunBtn();
+      });
+      document.getElementById("selNone").addEventListener("click", () => {
+        pasteChips.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+          cb.checked = false;
+          cb.closest(".chip").classList.remove("checked");
+        });
+        updateRunBtn();
+      });
+
+      runBtn.addEventListener("click", async () => {
+        msgEl.className = "msg";
+        msgEl.textContent = "";
+        const col1 = compareCol1.value.trim();
+        const col2 = compareCol2.value.trim();
+        if (!col1 || !col2) { showError("请填写两个表格的比对列名"); return; }
+        const cols = getCheckedCols();
+        if (cols.length === 0) { showError("请至少勾选一个需要粘贴的列名"); return; }
+        try {
+          runBtn.disabled = true;
+          const wb1 = await readWorkbook(file1);
+          const wb2 = await readWorkbook(file2);
+          const res = CompareCore.processCompare(wb1, sheet1Sel.value, col1, wb2, sheet2Sel.value, col2, cols);
+          if (!res.ok) { showError(res.error); return; }
+          resultBlob = new Blob([XLSX.write(wb2, { bookType: "xlsx", type: "array" })], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          });
+          resultName = "比对-" + file2.name;
+          renderResults(res, wb2);
+          dlBtn.textContent = "下载 " + resultName;
+          resultCard.classList.remove("hidden");
+          msgEl.className = "msg ok";
+          let text = "比对完成：目标表 " + res.targetDataRows + " 行，匹配成功 " + res.matchedRows
+            + " 行，未匹配 " + res.unmatchedRows + " 行；已粘贴列：" + res.pastedColumns.join("、") + "。";
+          if (res.skippedColumns.length) {
+            text += " 以下勾选列在第一个表格中未找到，已跳过：" + res.skippedColumns.join("、") + "。";
+          }
+          msgEl.textContent = text;
+        } catch (e) {
+          console.error(e);
+          showError("比对失败：文件无法解析，请确认文件格式正确。");
+        } finally {
+          updateRunBtn();
+        }
+      });
+
+      dlBtn.addEventListener("click", () => {
+        if (!resultBlob) return;
+        const url = URL.createObjectURL(resultBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = resultName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+      });
+
+      function showError(text) {
+        msgEl.className = "msg error";
+        msgEl.textContent = text;
+        resultCard.classList.remove("hidden");
+      }
+
+      function renderResults(res, wb) {
+        summaryEl.innerHTML = "<tbody><tr><th>目标子表</th><td>" + escapeHtml(sheet2Sel.value)
+          + "</td></tr><tr><th>目标数据行</th><td>" + res.targetDataRows
+          + "</td></tr><tr><th>匹配成功</th><td>" + res.matchedRows
+          + "</td></tr><tr><th>未匹配</th><td>" + res.unmatchedRows
+          + "</td></tr><tr><th>粘贴列</th><td>" + res.pastedColumns.map(escapeHtml).join("、")
+          + "</td></tr><tr><th>源表可匹配行</th><td>" + res.srcRowsWithKey + "</td></tr></tbody>";
+
+        const sheet = wb.Sheets[sheet2Sel.value];
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+        const endCol = Math.min(res.newColIndex + res.pastedColumns.length - 1, (aoa[0] || []).length - 1);
+        let html = '<div class="table-scroll"><table class="preview"><thead><tr>';
+        for (let c = 0; c <= endCol; c++) {
+          const pasted = c >= res.newColIndex;
+          html += "<th" + (pasted ? ' style="background:#e0ecff"' : "") + ">"
+            + escapeHtml(aoa[0][c] == null ? "" : aoa[0][c]) + "</th>";
+        }
+        html += "</tr></thead><tbody>";
+        const MAX_ROWS = 10;
+        for (let r = 1; r <= Math.min(aoa.length - 1, MAX_ROWS); r++) {
+          const row = aoa[r] || [];
+          html += "<tr>";
+          for (let c = 0; c <= endCol; c++) {
+            const v = row[c];
+            const txt = v == null ? "" : String(v);
+            html += "<td class='" + (c >= res.newColIndex ? "pasted" : "") + "'>" + escapeHtml(txt) + "</td>";
+          }
+          html += "</tr>";
+        }
+        if (aoa.length - 1 > MAX_ROWS) {
+          html += "<tr><td colspan='" + (endCol + 1) + "' style='color:var(--muted);text-align:center'>"
+            + "……共 " + (aoa.length - 1) + " 行数据，预览仅显示前 " + MAX_ROWS + " 行</td></tr>";
+        }
+        html += "</tbody></table></div>";
+        previewEl.innerHTML = html;
+      }
+    })();
+  </script>
+</body>
+</html>
